@@ -1,7 +1,8 @@
 (function () {
     'use strict';
 
-    console.log('[AnimeLib] Плагин запущен');
+    if (window.animelib_plugin) return;
+    window.animelib_plugin = true;
 
     var API_BASE = 'https://api.cdnlibs.org/api';
 
@@ -19,7 +20,6 @@
                 if (error) error();
             }
         }, function () {
-            // запасной прокси
             net.silent('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), function (data) {
                 try {
                     if (typeof data === 'string') data = JSON.parse(data);
@@ -39,7 +39,7 @@
             return;
         }
 
-        Lampa.Noty.show('Ищу: ' + title);
+        Lampa.Noty.show('Ищу на AnimeLib...');
 
         request(API_BASE + '/anime?q=' + encodeURIComponent(title) + '&limit=15', function (json) {
             var list = (json.data || []).map(function (a) {
@@ -116,7 +116,9 @@
                     Lampa.Player.play({
                         title: episode.name || 'Серия',
                         url: item.player.link,
-                        quality: { 'HD': item.player.link }
+                        quality: {
+                            'HD': item.player.link
+                        }
                     });
                 } else {
                     Lampa.Noty.show('Нет ссылки');
@@ -125,33 +127,43 @@
         });
     }
 
-    // === Самый надёжный способ добавления в меню ===
+    // ===== Кнопка (взято из рабочего Z01) =====
+    var buttonHtml = '<div class="full-start__button selector view--animelib" style="background:linear-gradient(45deg,#7b5cff,#c44dff)">' +
+        '<span>AnimeLib</span></div>';
+
+    function addButton(data) {
+        if (!data || !data.render || !data.render.length) return;
+        if (data.render.parent().find('.view--animelib').length) return;
+
+        var btn = $(buttonHtml);
+
+        btn.on('hover:enter', function () {
+            var movie = data.movie || {};
+            var title = movie.title || movie.name || movie.original_title || '';
+            startSearch(title);
+        });
+
+        data.render.after(btn);
+    }
+
     Lampa.Listener.follow('full', function (e) {
-        if (e.type !== 'complite' && e.type !== 'complete') return;
-
-        // Добавляем пункт в меню "ещё"
-        setTimeout(function () {
-            try {
-                if (e.object && e.object.activity && e.object.activity.menu) {
-                    // Удаляем старый пункт, если уже был
-                    e.object.activity.menu = e.object.activity.menu.filter(function (m) {
-                        return m.title !== 'AnimeLib';
-                    });
-
-                    e.object.activity.menu.push({
-                        title: 'AnimeLib',
-                        onSelect: function () {
-                            var movie = e.data.movie || {};
-                            var title = movie.title || movie.name || movie.original_title || '';
-                            startSearch(title);
-                        }
-                    });
-                }
-            } catch (err) {
-                console.log('AnimeLib menu error', err);
-            }
-        }, 400);
+        if (e.type == 'complite') {
+            addButton({
+                render: e.object.activity.render().find('.view--torrent'),
+                movie: e.data.movie
+            });
+        }
     });
 
-    Lampa.Noty.show('AnimeLib готов');
+    // Если карточка уже открыта
+    try {
+        if (Lampa.Activity.active().component == 'full') {
+            addButton({
+                render: Lampa.Activity.active().activity.render().find('.view--torrent'),
+                movie: Lampa.Activity.active().card
+            });
+        }
+    } catch (e) {}
+
+    Lampa.Noty.show('AnimeLib загружен');
 })();
