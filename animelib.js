@@ -6,31 +6,46 @@
 
     var API = 'https://api.cdnlibs.org/api';
 
-    function proxy(url) {
-        return 'https://corsproxy.io/?' + encodeURIComponent(url);
-    }
+    var PROXIES = [
+        function(url) { return 'https://corsproxy.io/?' + encodeURIComponent(url); },
+        function(url) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url); },
+        function(url) { return 'https://cors.eu.org/' + url; },
+        function(url) { return url; } // прямой запрос (на случай если Lampa сама проксирует)
+    ];
 
     function request(url, success, error) {
         var net = new Lampa.Reguest();
-        net.silent(proxy(url), function (data) {
-            try {
-                if (typeof data === 'string') data = JSON.parse(data);
-                success(data);
-            } catch (e) {
+        var index = 0;
+
+        function tryNext() {
+            if (index >= PROXIES.length) {
                 if (error) error();
+                return;
             }
-        }, function () {
-            net.silent('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), function (data) {
+
+            var fullUrl = PROXIES[index](url);
+            index++;
+
+            net.silent(fullUrl, function (data) {
                 try {
-                    if (typeof data === 'string') data = JSON.parse(data);
+                    if (typeof data === 'string') {
+                        // иногда allorigins возвращает обёртку
+                        if (data.indexOf('"contents"') > -1) {
+                            var parsed = JSON.parse(data);
+                            data = parsed.contents || data;
+                        }
+                        data = JSON.parse(data);
+                    }
                     success(data);
                 } catch (e) {
-                    if (error) error();
+                    tryNext();
                 }
             }, function () {
-                if (error) error();
+                tryNext();
             });
-        });
+        }
+
+        tryNext();
     }
 
     function startSearch(title) {
@@ -39,7 +54,7 @@
             return;
         }
 
-        Lampa.Noty.show('Ищу на AnimeLib...');
+        Lampa.Noty.show('Ищу: ' + title);
 
         var url = API + '/anime?q=' + encodeURIComponent(title) +
                   '&fields[]=rate&fields[]=rate_avg&fields[]=releaseDate&site_id[]=1&site_id[]=3';
@@ -47,9 +62,8 @@
         request(url, function (json) {
             var list = (json.data || []).map(function (a) {
                 return {
-                    title: (a.rus_name || a.name || a.eng_name || '') + (a.year ? ' (' + a.year + ')' : ''),
-                    id: a.slug_url || a.id,
-                    slug: a.slug_url
+                    title: (a.rus_name || a.name || a.eng_name || '') + (a.releaseDate ? ' (' + a.releaseDate.substring(0,4) + ')' : ''),
+                    slug: a.slug_url || a.id
                 };
             });
 
@@ -62,25 +76,22 @@
                 title: 'AnimeLib',
                 items: list,
                 onSelect: function (item) {
-                    loadEpisodes(item.slug || item.id, item.title);
+                    loadEpisodes(item.slug, item.title);
                 }
             });
         }, function () {
-            Lampa.Noty.show('Ошибка поиска');
+            Lampa.Noty.show('Ошибка поиска (прокси/сеть)');
         });
     }
 
     function loadEpisodes(slug, title) {
         Lampa.Noty.show('Загружаю серии...');
 
-        var url = API + '/episodes?anime_id=' + encodeURIComponent(slug);
-
-        request(url, function (json) {
+        request(API + '/episodes?anime_id=' + encodeURIComponent(slug), function (json) {
             var eps = (json.data || []).map(function (ep) {
                 return {
-                    title: ep.name || ('Серия ' + ep.number),
-                    id: ep.id,
-                    episode: ep
+                    title: 'Серия ' + ep.number + (ep.name ? ' — ' + ep.name : ''),
+                    id: ep.id
                 };
             });
 
@@ -104,9 +115,7 @@
     function loadPlayers(episodeId, title) {
         Lampa.Noty.show('Загружаю озвучки...');
 
-        var url = API + '/episodes/' + episodeId;
-
-        request(url, function (json) {
+        request(API + '/episodes/' + episodeId, function (json) {
             var players = (json.data && json.data.players) ? json.data.players : [];
 
             if (!players.length) {
@@ -116,10 +125,9 @@
 
             var items = players.map(function (p) {
                 var name = (p.team && p.team.name) ? p.team.name : (p.player || 'Озвучка');
-                if (p.quality) name += ' [' + p.quality + ']';
                 return {
                     title: name,
-                    player: p
+                    src: p.src
                 };
             });
 
@@ -127,23 +135,18 @@
                 title: 'Озвучка',
                 items: items,
                 onSelect: function (item) {
-                    var p = item.player;
-                    var link = p.src || p.link || p.url;
-
-                    if (link) {
-                        // Kodik обычно начинается с //
-                        if (link.indexOf('//') === 0) link = 'https:' + link;
-
-                        Lampa.Player.play({
-                            title: title,
-                            url: link,
-                            quality: {
-                                'HD': link
-                            }
-                        });
-                    } else {
-                        Lampa.Noty.show('Нет ссылки на видео');
+                    var link = item.src;
+                    if (!link) {
+                        Lampa.Noty.show('Нет ссылки');
+                        return;
                     }
+                    if (link.indexOf('//') === 0) link = 'https:' + link;
+
+                    Lampa.Player.play({
+                        title: title,
+                        url: link,
+                        quality: { '720p': link }
+                    });
                 }
             });
         }, function () {
@@ -151,7 +154,7 @@
         });
     }
 
-    // ===== Кнопка (как в Z01) =====
+    // ===== Кнопка =====
     var buttonHtml = '<div class="full-start__button selector view--animelib" style="background:linear-gradient(45deg,#7b5cff,#c44dff)">' +
         '<span>AnimeLib</span></div>';
 
@@ -160,13 +163,11 @@
         if (data.render.parent().find('.view--animelib').length) return;
 
         var btn = $(buttonHtml);
-
         btn.on('hover:enter', function () {
             var movie = data.movie || {};
             var title = movie.title || movie.name || movie.original_title || '';
             startSearch(title);
         });
-
         data.render.after(btn);
     }
 
