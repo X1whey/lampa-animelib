@@ -4,7 +4,7 @@
     if (window.animelib_plugin) return;
     window.animelib_plugin = true;
 
-    var API_BASE = 'https://api.cdnlibs.org/api';
+    var API = 'https://api.cdnlibs.org/api';
 
     function proxy(url) {
         return 'https://corsproxy.io/?' + encodeURIComponent(url);
@@ -41,11 +41,15 @@
 
         Lampa.Noty.show('Ищу на AnimeLib...');
 
-        request(API_BASE + '/anime?q=' + encodeURIComponent(title) + '&limit=15', function (json) {
+        var url = API + '/anime?q=' + encodeURIComponent(title) +
+                  '&fields[]=rate&fields[]=rate_avg&fields[]=releaseDate&site_id[]=1&site_id[]=3';
+
+        request(url, function (json) {
             var list = (json.data || []).map(function (a) {
                 return {
-                    title: (a.rus_name || a.name) + (a.year ? ' (' + a.year + ')' : ''),
-                    id: a.id
+                    title: (a.rus_name || a.name || a.eng_name || '') + (a.year ? ' (' + a.year + ')' : ''),
+                    id: a.slug_url || a.id,
+                    slug: a.slug_url
                 };
             });
 
@@ -58,7 +62,7 @@
                 title: 'AnimeLib',
                 items: list,
                 onSelect: function (item) {
-                    loadEpisodes(item.id, item.title);
+                    loadEpisodes(item.slug || item.id, item.title);
                 }
             });
         }, function () {
@@ -66,12 +70,16 @@
         });
     }
 
-    function loadEpisodes(id, title) {
+    function loadEpisodes(slug, title) {
         Lampa.Noty.show('Загружаю серии...');
-        request(API_BASE + '/anime/' + id + '/episodes', function (json) {
+
+        var url = API + '/episodes?anime_id=' + encodeURIComponent(slug);
+
+        request(url, function (json) {
             var eps = (json.data || []).map(function (ep) {
                 return {
                     title: ep.name || ('Серия ' + ep.number),
+                    id: ep.id,
                     episode: ep
                 };
             });
@@ -85,7 +93,7 @@
                 title: title,
                 items: eps,
                 onSelect: function (item) {
-                    showPlayers(item.episode);
+                    loadPlayers(item.id, item.title);
                 }
             });
         }, function () {
@@ -93,41 +101,57 @@
         });
     }
 
-    function showPlayers(episode) {
-        if (!episode.players || !episode.players.length) {
-            Lampa.Noty.show('Нет озвучек');
-            return;
-        }
+    function loadPlayers(episodeId, title) {
+        Lampa.Noty.show('Загружаю озвучки...');
 
-        var items = episode.players.map(function (p) {
-            var name = (p.team && p.team.name) ? p.team.name : (p.player || 'Озвучка');
-            if (p.quality) name += ' [' + p.quality + ']';
-            return {
-                title: name,
-                player: p
-            };
-        });
+        var url = API + '/episodes/' + episodeId;
 
-        Lampa.Select.show({
-            title: 'Озвучка',
-            items: items,
-            onSelect: function (item) {
-                if (item.player && item.player.link) {
-                    Lampa.Player.play({
-                        title: episode.name || 'Серия',
-                        url: item.player.link,
-                        quality: {
-                            'HD': item.player.link
-                        }
-                    });
-                } else {
-                    Lampa.Noty.show('Нет ссылки');
-                }
+        request(url, function (json) {
+            var players = (json.data && json.data.players) ? json.data.players : [];
+
+            if (!players.length) {
+                Lampa.Noty.show('Нет озвучек');
+                return;
             }
+
+            var items = players.map(function (p) {
+                var name = (p.team && p.team.name) ? p.team.name : (p.player || 'Озвучка');
+                if (p.quality) name += ' [' + p.quality + ']';
+                return {
+                    title: name,
+                    player: p
+                };
+            });
+
+            Lampa.Select.show({
+                title: 'Озвучка',
+                items: items,
+                onSelect: function (item) {
+                    var p = item.player;
+                    var link = p.src || p.link || p.url;
+
+                    if (link) {
+                        // Kodik обычно начинается с //
+                        if (link.indexOf('//') === 0) link = 'https:' + link;
+
+                        Lampa.Player.play({
+                            title: title,
+                            url: link,
+                            quality: {
+                                'HD': link
+                            }
+                        });
+                    } else {
+                        Lampa.Noty.show('Нет ссылки на видео');
+                    }
+                }
+            });
+        }, function () {
+            Lampa.Noty.show('Ошибка загрузки озвучек');
         });
     }
 
-    // ===== Кнопка (взято из рабочего Z01) =====
+    // ===== Кнопка (как в Z01) =====
     var buttonHtml = '<div class="full-start__button selector view--animelib" style="background:linear-gradient(45deg,#7b5cff,#c44dff)">' +
         '<span>AnimeLib</span></div>';
 
@@ -155,7 +179,6 @@
         }
     });
 
-    // Если карточка уже открыта
     try {
         if (Lampa.Activity.active().component == 'full') {
             addButton({
