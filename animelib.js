@@ -6,46 +6,18 @@
 
     var API = 'https://api.cdnlibs.org/api';
 
-    var PROXIES = [
-        function(url) { return 'https://corsproxy.io/?' + encodeURIComponent(url); },
-        function(url) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url); },
-        function(url) { return 'https://cors.eu.org/' + url; },
-        function(url) { return url; } // прямой запрос (на случай если Lampa сама проксирует)
-    ];
-
     function request(url, success, error) {
         var net = new Lampa.Reguest();
-        var index = 0;
-
-        function tryNext() {
-            if (index >= PROXIES.length) {
+        net.silent(url, function (data) {
+            try {
+                if (typeof data === 'string') data = JSON.parse(data);
+                success(data);
+            } catch (e) {
                 if (error) error();
-                return;
             }
-
-            var fullUrl = PROXIES[index](url);
-            index++;
-
-            net.silent(fullUrl, function (data) {
-                try {
-                    if (typeof data === 'string') {
-                        // иногда allorigins возвращает обёртку
-                        if (data.indexOf('"contents"') > -1) {
-                            var parsed = JSON.parse(data);
-                            data = parsed.contents || data;
-                        }
-                        data = JSON.parse(data);
-                    }
-                    success(data);
-                } catch (e) {
-                    tryNext();
-                }
-            }, function () {
-                tryNext();
-            });
-        }
-
-        tryNext();
+        }, function () {
+            if (error) error();
+        });
     }
 
     function startSearch(title) {
@@ -62,7 +34,7 @@
         request(url, function (json) {
             var list = (json.data || []).map(function (a) {
                 return {
-                    title: (a.rus_name || a.name || a.eng_name || '') + (a.releaseDate ? ' (' + a.releaseDate.substring(0,4) + ')' : ''),
+                    title: (a.rus_name || a.name || a.eng_name || '') + (a.releaseDate ? ' (' + a.releaseDate.substring(0, 4) + ')' : ''),
                     slug: a.slug_url || a.id
                 };
             });
@@ -80,7 +52,7 @@
                 }
             });
         }, function () {
-            Lampa.Noty.show('Ошибка поиска (прокси/сеть)');
+            Lampa.Noty.show('Ошибка поиска (нет доступа к API)');
         });
     }
 
@@ -154,7 +126,7 @@
         });
     }
 
-    // ===== Кнопка =====
+    // Кнопка
     var buttonHtml = '<div class="full-start__button selector view--animelib" style="background:linear-gradient(45deg,#7b5cff,#c44dff)">' +
         '<span>AnimeLib</span></div>';
 
