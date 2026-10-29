@@ -1,59 +1,8 @@
 (function () {
     'use strict';
 
-    console.log('[AnimeLib] Плагин начал загрузку');
+    console.log('[AnimeLib] Загрузка плагина...');
 
-    function addButton() {
-        // Ищем блок с кнопками
-        var buttons = document.querySelector('.full-start__buttons');
-        if (!buttons) return;
-
-        // Если кнопка уже есть — не добавляем второй раз
-        if (document.querySelector('.animelib-btn')) return;
-
-        var btn = document.createElement('div');
-        btn.className = 'full-start__button selector animelib-btn';
-        btn.style.background = 'linear-gradient(45deg, #7b5cff, #c44dff)';
-        btn.innerHTML = '<span>AnimeLib</span>';
-
-        btn.addEventListener('hover:enter', function () {
-            var title = '';
-            try {
-                // Пытаемся взять название из карточки
-                var titleEl = document.querySelector('.full-start__title');
-                if (titleEl) title = titleEl.innerText.trim();
-            } catch (e) {}
-
-            if (!title) {
-                Lampa.Noty.show('Не удалось определить название');
-                return;
-            }
-
-            Lampa.Noty.show('Ищу: ' + title);
-            // Пока просто уведомление — дальше доработаем поиск
-            startSearch(title);
-        });
-
-        buttons.appendChild(btn);
-        console.log('[AnimeLib] Кнопка добавлена');
-    }
-
-    // Следим за открытием карточки
-    Lampa.Listener.follow('full', function (e) {
-        if (e.type === 'complite' || e.type === 'complete') {
-            setTimeout(addButton, 500);
-            setTimeout(addButton, 1500); // на всякий случай ещё раз
-        }
-    });
-
-    // Также пробуем добавлять периодически (на случай если событие не сработало)
-    setInterval(function () {
-        if (document.querySelector('.full-start__buttons') && !document.querySelector('.animelib-btn')) {
-            addButton();
-        }
-    }, 2000);
-
-    // ===== Остальной функционал =====
     var API_BASE = 'https://api.cdnlibs.org/api';
     var PROXIES = [
         'https://corsproxy.io/?',
@@ -88,15 +37,18 @@
     }
 
     function startSearch(query) {
-        Lampa.Noty.show('Ищу на AnimeLib...');
-        var url = API_BASE + '/anime?q=' + encodeURIComponent(query) + '&limit=12';
+        if (!query) {
+            Lampa.Noty.show('Нет названия');
+            return;
+        }
 
-        request(url, function (json) {
+        Lampa.Noty.show('Ищу на AnimeLib...');
+
+        request(API_BASE + '/anime?q=' + encodeURIComponent(query) + '&limit=12', function (json) {
             var results = (json.data || []).map(function (item) {
                 return {
                     title: (item.rus_name || item.name) + (item.year ? ' (' + item.year + ')' : ''),
-                    id: item.id,
-                    anime: item
+                    id: item.id
                 };
             });
 
@@ -106,7 +58,7 @@
             }
 
             Lampa.Select.show({
-                title: 'AnimeLib',
+                title: 'AnimeLib — результаты',
                 items: results,
                 onSelect: function (item) {
                     loadEpisodes(item.id, item.title);
@@ -146,7 +98,7 @@
 
     function showPlayers(episode) {
         if (!episode.players || !episode.players.length) {
-            Lampa.Noty.show('Нет озвучек');
+            Lampa.Noty.show('Нет доступных озвучек');
             return;
         }
 
@@ -160,7 +112,7 @@
         });
 
         Lampa.Select.show({
-            title: 'Озвучка',
+            title: 'Выбор озвучки',
             items: items,
             onSelect: function (item) {
                 var p = item.player;
@@ -168,16 +120,41 @@
                     Lampa.Player.play({
                         title: episode.name || 'Серия',
                         url: p.link,
-                        quality: { 'HD': p.link }
+                        quality: {
+                            'HD': p.link
+                        }
                     });
                 } else {
-                    Lampa.Noty.show('Нет ссылки');
+                    Lampa.Noty.show('Нет ссылки на видео');
                 }
             }
         });
     }
 
+    // === Добавляем пункт в меню "ещё" (три точки) ===
+    Lampa.Listener.follow('full', function (e) {
+        if (e.type === 'complite' || e.type === 'complete') {
+            // Добавляем в контекстное меню карточки
+            e.object.activity.menu.push({
+                title: 'AnimeLib',
+                template: 'menu_button',
+                onSelect: function () {
+                    var movie = e.data.movie;
+                    var title = movie.title || movie.name || movie.original_title || '';
+                    startSearch(title);
+                }
+            });
+        }
+    });
+
+    // Альтернативный способ через событие меню
+    Lampa.Listener.follow('menu', function (e) {
+        if (e.type === 'open' && e.object && e.object.movie) {
+            // Можно добавить сюда тоже
+        }
+    });
+
     console.log('[AnimeLib] Плагин загружен');
-    Lampa.Noty.show('AnimeLib готов');
+    Lampa.Noty.show('AnimeLib загружен');
 
 })();
