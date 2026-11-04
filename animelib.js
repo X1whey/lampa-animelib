@@ -6,82 +6,74 @@
 
     var SITE_URL = 'https://rt.pornhub.com';
     var MENU_TITLE = 'Pornhub';
+    var tries = 0;
 
     function openSite() {
-        var html = $('<div class="browser-page" style="width:100%;height:100%;background:#000;position:relative;"></div>');
-        var iframe = $('<iframe></iframe>');
+        try {
+            var html = $('<div style="width:100%;height:85vh;background:#000;"></div>');
+            var iframe = $('<iframe style="width:100%;height:100%;border:0;background:#000;" allowfullscreen="true"></iframe>');
+            iframe.attr('src', SITE_URL);
+            html.append(iframe);
 
-        iframe.css({
-            width: '100%',
-            height: '100%',
-            border: '0',
-            background: '#000'
-        });
-
-        iframe.attr({
-            src: SITE_URL,
-            allowfullscreen: 'true',
-            allow: 'autoplay; fullscreen; encrypted-media'
-        });
-
-        html.append(iframe);
-
-        Lampa.Modal.open({
-            title: MENU_TITLE,
-            size: 'full',
-            html: html,
-            onBack: function () {
-                Lampa.Modal.close();
-                Lampa.Controller.toggle('content');
-            }
-        });
-    }
-
-    function addMenuItem() {
-        // Не добавляем повторно
-        if ($('.menu__item[data-action="browser_page"]').length) return;
-
-        var button = $(
-            '<li class="menu__item selector" data-action="browser_page">' +
-            '<div class="menu__ico">' +
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">' +
-            '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>' +
-            '</svg>' +
-            '</div>' +
-            '<div class="menu__text">' + MENU_TITLE + '</div>' +
-            '</li>'
-        );
-
-        button.on('hover:enter', function () {
-            openSite();
-        });
-
-        // Основной список меню (левая панель)
-        var list = $('.menu .menu__list').eq(0);
-        if (list.length) {
-            list.append(button);
-        } else {
-            // Если меню ещё не готово — подождём
-            setTimeout(addMenuItem, 500);
+            Lampa.Modal.open({
+                title: MENU_TITLE,
+                size: 'full',
+                html: html,
+                onBack: function () {
+                    Lampa.Modal.close();
+                    Lampa.Controller.toggle('content');
+                }
+            });
+        } catch (e) {
+            if (Lampa && Lampa.Noty) Lampa.Noty.show('Ошибка открытия сайта');
         }
     }
 
+    function addMenuItem() {
+        try {
+            if (!window.$ || !document.querySelector) return false;
+            if ($('.menu__item[data-action="browser_page"]').length) return true;
+
+            var list = $('.menu .menu__list').eq(0);
+            if (!list.length) return false;
+
+            var button = $(
+                '<li class="menu__item selector" data-action="browser_page">' +
+                    '<div class="menu__text">' + MENU_TITLE + '</div>' +
+                '</li>'
+            );
+
+            button.on('hover:enter', openSite);
+            list.append(button);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function tryAdd() {
+        if (addMenuItem()) return;
+        tries++;
+        if (tries < 20) setTimeout(tryAdd, 500);
+    }
+
     function init() {
-        addMenuItem();
-
-        // На случай, если меню перерисовывается
-        Lampa.Listener.follow('menu', function (e) {
-            if (e.type === 'start' || e.type === 'ready') {
-                setTimeout(addMenuItem, 300);
-            }
-        });
+        try {
+            tryAdd();
+        } catch (e) {}
     }
 
-    if (window.appready) {
-        init();
-    } else {
-        Lampa.Listener.follow('app', function (e) {
-            if (e.type === 'ready') init();
-        });
+    function start() {
+        if (window.appready) {
+            init();
+        } else if (window.Lampa && Lampa.Listener) {
+            Lampa.Listener.follow('app', function (e) {
+                if (e.type === 'ready') init();
+            });
+        } else {
+            setTimeout(start, 300);
+        }
     }
+
+    start();
 })();
