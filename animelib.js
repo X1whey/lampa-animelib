@@ -1,102 +1,80 @@
-(function () {
-    'use strict';
+function startSitePlugin() {
+    window.site_plugin_ready = true;
 
-    if (window.site_open_plugin) return;
-    window.site_open_plugin = true;
+    Lampa.Lang.add({
+        site_title: {
+            ru: 'Сайт',
+            en: 'Site'
+        }
+    });
 
-    var KEY = 'site_open_last_url';
+    function SiteScreen() {
+        var html = $('<div class="explorer" style="height:100%;"></div>');
+        var head = $('<div style="padding:1em;"></div>');
+        var field = $('<input type="text" style="width:70%;padding:0.7em;font-size:1.1em;">');
+        var go = $('<div class="simple-button selector" style="display:inline-block;margin-left:0.6em;padding:0.7em 1em;">Открыть</div>');
+        var frame = $('<iframe style="width:100%;height:80vh;border:0;background:#fff;" allowfullscreen="true"></iframe>');
 
-    function normalize(url) {
-        url = String(url || '').replace(/^\s+|\s+$/g, '');
-        if (!url) return '';
-        if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) url = 'https://' + url;
-        return url;
-    }
+        field.val('https://');
+        head.append(field).append(go);
+        html.append(head).append(frame);
 
-    function openUrl(url) {
-        var html = $('<div style="width:100%;height:85vh;background:#000;"></div>');
-        var frame = $('<iframe style="width:100%;height:100%;border:0;background:#fff;" allowfullscreen="true"></iframe>');
-        frame.attr('src', url);
-        html.append(frame);
+        function open() {
+            var url = String(field.val() || '').replace(/^\s+|\s+$/g, '');
+            if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) url = 'https://' + url;
+            frame.attr('src', url);
+        }
 
-        Lampa.Modal.open({
-            title: 'Сайт',
-            size: 'full',
-            html: html,
-            onBack: function () {
-                Lampa.Modal.close();
-                Lampa.Controller.toggle('content');
-            }
-        });
-    }
+        go.on('hover:enter', open);
 
-    function askUrl() {
-        var last = '';
-        try { last = Lampa.Storage.get(KEY, '') || ''; } catch (e) {}
-
-        var box = $('<div style="padding:1em;"></div>');
-        var field = $('<input type="text" class="simple-keyboard-input" style="width:100%;padding:0.8em;font-size:1.1em;border-radius:0.4em;border:0;">');
-        field.val(last || 'https://');
-        box.append(field);
-
-        Lampa.Modal.open({
-            title: 'Ссылка',
-            size: 'medium',
-            html: box,
-            buttons: [
-                {
-                    name: 'Открыть',
-                    onSelect: function () {
-                        var url = normalize(field.val());
-                        Lampa.Modal.close();
-                        if (!url) {
-                            Lampa.Noty.show('Введите ссылку');
-                            Lampa.Controller.toggle('menu');
-                            return;
-                        }
-                        try { Lampa.Storage.set(KEY, url); } catch (e) {}
-                        openUrl(url);
-                    }
-                }
-            ],
-            onBack: function () {
-                Lampa.Modal.close();
-                Lampa.Controller.toggle('menu');
-            }
-        });
-
-        setTimeout(function () { field.focus(); }, 300);
-    }
-
-    function addMenuItem() {
-        if ($('.menu__item[data-action="site_open"]').length) return true;
-        var list = $('.menu .menu__list').eq(0);
-        if (!list.length) return false;
-
-        var button = $('<li class="menu__item selector" data-action="site_open"><div class="menu__text">Сайт</div></li>');
-        button.on('hover:enter', askUrl);
-        list.append(button);
-        return true;
-    }
-
-    var tries = 0;
-    function tryAdd() {
-        try {
-            if (addMenuItem()) return;
-        } catch (e) {}
-        tries++;
-        if (tries < 40) setTimeout(tryAdd, 400);
+        this.create = function () { return this.render(); };
+        this.start = function () {
+            Lampa.Controller.add('content', {
+                toggle: function () {
+                    Lampa.Controller.collectionSet(html);
+                    Lampa.Controller.collectionFocus(go, html);
+                },
+                up: function () {
+                    if (Navigator.canmove('up')) Navigator.move('up');
+                    else Lampa.Controller.toggle('head');
+                },
+                down: function () { Navigator.move('down'); },
+                left: function () {
+                    if (Navigator.canmove('left')) Navigator.move('left');
+                    else Lampa.Controller.toggle('menu');
+                },
+                right: function () { Navigator.move('right'); },
+                back: function () { Lampa.Activity.backward(); }
+            });
+            Lampa.Controller.toggle('content');
+        };
+        this.pause = function () {};
+        this.stop = function () {};
+        this.render = function () { return html; };
+        this.destroy = function () { html.remove(); };
     }
 
     function init() {
-        tryAdd();
-        if (window.Lampa && Lampa.Noty) Lampa.Noty.show('Плагин Сайт включён');
+        Lampa.Component.add('site_screen', SiteScreen);
+
+        var btn = $('<li class="menu__item selector"><div class="menu__text">' + Lampa.Lang.translate('site_title') + '</div></li>');
+
+        btn.on('hover:enter', function () {
+            Lampa.Activity.push({
+                url: '',
+                title: Lampa.Lang.translate('site_title'),
+                component: 'site_screen',
+                page: 1
+            });
+        });
+
+        $('.menu .menu__list').eq(0).append(btn);
     }
 
     if (window.appready) init();
-    else if (window.Lampa && Lampa.Listener) {
-        Lampa.Listener.follow('app', function (e) {
-            if (e.type === 'ready') init();
-        });
-    }
-})();
+    else Lampa.Listener.follow('app', function (e) {
+        if (e.type == 'ready') init();
+    });
+}
+
+if (!window.site_plugin_ready) startSitePlugin();
