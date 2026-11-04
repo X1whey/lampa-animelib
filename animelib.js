@@ -1,74 +1,60 @@
 function startSitePlugin() {
     window.site_plugin_ready = true;
 
-    Lampa.Lang.add({
-        site_title: {
-            ru: 'Сайт',
-            en: 'Site'
-        }
-    });
+    function openAsk() {
+        var last = '';
+        try { last = Lampa.Storage.get('site_open_url', '') || ''; } catch (e) {}
 
-    function SiteScreen() {
-        var html = $('<div class="explorer" style="height:100%;"></div>');
-        var head = $('<div style="padding:1em;"></div>');
-        var field = $('<input type="text" style="width:70%;padding:0.7em;font-size:1.1em;">');
-        var go = $('<div class="simple-button selector" style="display:inline-block;margin-left:0.6em;padding:0.7em 1em;">Открыть</div>');
-        var frame = $('<iframe style="width:100%;height:80vh;border:0;background:#fff;" allowfullscreen="true"></iframe>');
-
-        field.val('https://');
-        head.append(field).append(go);
-        html.append(head).append(frame);
-
-        function open() {
-            var url = String(field.val() || '').replace(/^\s+|\s+$/g, '');
+        Lampa.Input.edit({
+            title: 'Ссылка',
+            value: last || 'https://',
+            free: true,
+            nosave: true
+        }, function (value) {
+            var url = String(value || '').replace(/^\s+|\s+$/g, '');
+            if (!url) return;
             if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) url = 'https://' + url;
+            try { Lampa.Storage.set('site_open_url', url); } catch (e) {}
+
+            var html = $('<div style="width:100%;height:85vh;background:#000;"></div>');
+            var frame = $('<iframe style="width:100%;height:100%;border:0;background:#fff;" allowfullscreen="true"></iframe>');
             frame.attr('src', url);
-        }
+            html.append(frame);
 
-        go.on('hover:enter', open);
-
-        this.create = function () { return this.render(); };
-        this.start = function () {
-            Lampa.Controller.add('content', {
-                toggle: function () {
-                    Lampa.Controller.collectionSet(html);
-                    Lampa.Controller.collectionFocus(go, html);
-                },
-                up: function () {
-                    if (Navigator.canmove('up')) Navigator.move('up');
-                    else Lampa.Controller.toggle('head');
-                },
-                down: function () { Navigator.move('down'); },
-                left: function () {
-                    if (Navigator.canmove('left')) Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
-                },
-                right: function () { Navigator.move('right'); },
-                back: function () { Lampa.Activity.backward(); }
+            Lampa.Modal.open({
+                title: 'Сайт',
+                size: 'large',
+                html: html,
+                onBack: function () {
+                    Lampa.Modal.close();
+                    Lampa.Controller.toggle('content');
+                }
             });
-            Lampa.Controller.toggle('content');
-        };
-        this.pause = function () {};
-        this.stop = function () {};
-        this.render = function () { return html; };
-        this.destroy = function () { html.remove(); };
+        });
+    }
+
+    function addButton() {
+        if ($('.menu__item[data-action="site_open"]').length) return $('.menu .menu__list').length;
+
+        var lists = $('.menu .menu__list');
+        if (!lists.length) return 0;
+
+        var btn = $('<li class="menu__item selector" data-action="site_open"><div class="menu__text">Сайт</div></li>');
+        btn.on('hover:enter', openAsk);
+        lists.eq(0).append(btn);
+        return lists.length;
     }
 
     function init() {
-        Lampa.Component.add('site_screen', SiteScreen);
-
-        var btn = $('<li class="menu__item selector"><div class="menu__text">' + Lampa.Lang.translate('site_title') + '</div></li>');
-
-        btn.on('hover:enter', function () {
-            Lampa.Activity.push({
-                url: '',
-                title: Lampa.Lang.translate('site_title'),
-                component: 'site_screen',
-                page: 1
-            });
-        });
-
-        $('.menu .menu__list').eq(0).append(btn);
+        var n = 0;
+        var t = setInterval(function () {
+            n++;
+            var found = addButton();
+            if ($('.menu__item[data-action="site_open"]').length || n > 20) {
+                clearInterval(t);
+                Lampa.Noty.show(found ? 'Сайт добавлен в меню' : 'Меню не найдено');
+            }
+        }, 500);
     }
 
     if (window.appready) init();
