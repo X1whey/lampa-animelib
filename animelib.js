@@ -7,20 +7,20 @@
     var KEY = 'site_open_last_url';
 
     function normalize(url) {
-        url = (url || '').trim();
+        url = String(url || '').replace(/^\s+|\s+$/g, '');
         if (!url) return '';
-        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        if (url.indexOf('http://') !== 0 && url.indexOf('https://') !== 0) url = 'https://' + url;
         return url;
     }
 
     function openUrl(url) {
         var html = $('<div style="width:100%;height:85vh;background:#000;"></div>');
-        var iframe = $('<iframe style="width:100%;height:100%;border:0;background:#fff;" allowfullscreen="true"></iframe>');
-        iframe.attr('src', url);
-        html.append(iframe);
+        var frame = $('<iframe style="width:100%;height:100%;border:0;background:#fff;" allowfullscreen="true"></iframe>');
+        frame.attr('src', url);
+        html.append(frame);
 
         Lampa.Modal.open({
-            title: url,
+            title: 'Сайт',
             size: 'full',
             html: html,
             onBack: function () {
@@ -34,56 +34,67 @@
         var last = '';
         try { last = Lampa.Storage.get(KEY, '') || ''; } catch (e) {}
 
-        Lampa.Input.edit({
-            title: 'Ссылка на сайт',
-            value: last,
-            free: true,
-            nosave: true
-        }, function (value) {
-            var url = normalize(value);
-            if (!url) {
-                Lampa.Noty.show('Введите ссылку');
+        var box = $('<div style="padding:1em;"></div>');
+        var field = $('<input type="text" class="simple-keyboard-input" style="width:100%;padding:0.8em;font-size:1.1em;border-radius:0.4em;border:0;">');
+        field.val(last || 'https://');
+        box.append(field);
+
+        Lampa.Modal.open({
+            title: 'Ссылка',
+            size: 'medium',
+            html: box,
+            buttons: [
+                {
+                    name: 'Открыть',
+                    onSelect: function () {
+                        var url = normalize(field.val());
+                        Lampa.Modal.close();
+                        if (!url) {
+                            Lampa.Noty.show('Введите ссылку');
+                            Lampa.Controller.toggle('menu');
+                            return;
+                        }
+                        try { Lampa.Storage.set(KEY, url); } catch (e) {}
+                        openUrl(url);
+                    }
+                }
+            ],
+            onBack: function () {
+                Lampa.Modal.close();
                 Lampa.Controller.toggle('menu');
-                return;
             }
-            try { Lampa.Storage.set(KEY, url); } catch (e) {}
-            openUrl(url);
         });
+
+        setTimeout(function () { field.focus(); }, 300);
     }
 
     function addMenuItem() {
         if ($('.menu__item[data-action="site_open"]').length) return true;
-
         var list = $('.menu .menu__list').eq(0);
         if (!list.length) return false;
 
-        var button = $(
-            '<li class="menu__item selector" data-action="site_open">' +
-                '<div class="menu__text">Сайт</div>' +
-            '</li>'
-        );
-
-        button.on('hover:enter', function () {
-            askUrl();
-        });
-
+        var button = $('<li class="menu__item selector" data-action="site_open"><div class="menu__text">Сайт</div></li>');
+        button.on('hover:enter', askUrl);
         list.append(button);
         return true;
     }
 
     var tries = 0;
     function tryAdd() {
-        if (addMenuItem()) return;
+        try {
+            if (addMenuItem()) return;
+        } catch (e) {}
         tries++;
-        if (tries < 30) setTimeout(tryAdd, 400);
+        if (tries < 40) setTimeout(tryAdd, 400);
     }
 
     function init() {
         tryAdd();
+        if (window.Lampa && Lampa.Noty) Lampa.Noty.show('Плагин Сайт включён');
     }
 
     if (window.appready) init();
-    else {
+    else if (window.Lampa && Lampa.Listener) {
         Lampa.Listener.follow('app', function (e) {
             if (e.type === 'ready') init();
         });
